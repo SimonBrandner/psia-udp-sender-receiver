@@ -58,10 +58,9 @@ void send_packet(connection_t connection, packet_t *packet) {
 void send_transmission_start_packet(connection_t connection,
 									uint32_t transmission_id,
 									uint32_t transmission_length,
-									uint32_t file_size, const char *file_name) {
+									const char *file_name) {
 	transmission_start_packet_content_t content;
 	content.transmission_length = transmission_length;
-	content.file_size = file_size;
 	content.file_name = file_name;
 
 	packet_t packet;

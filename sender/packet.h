@@ -19,7 +19,6 @@ typedef struct packet_t {
 
 typedef struct transmission_start_packet_content_t {
 	uint32_t transmission_length;
-	uint32_t file_size;
 	const char *file_name;
 } transmission_start_packet_content_t;
 
