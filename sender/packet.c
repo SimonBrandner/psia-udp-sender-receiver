@@ -20,6 +20,10 @@ void serialize_transmission_start_packet_content(
 
 	// Allocate space
 	*packet_content_data = malloc(*packet_content_size);
+	if (packet_content_data == NULL) {
+		fprintf(stderr, "Malloc failed!\n");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
 	uint8_t *packet_content_data_pointer = *packet_content_data;
 
 	// Serialize data
@@ -47,6 +51,10 @@ void serialize_transmission_data_packet_content(
 
 	// Allocate space
 	*packet_content_data = malloc(*packet_content_size);
+	if (packet_content_data == NULL) {
+		fprintf(stderr, "Malloc failed!\n");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
 	uint8_t *packet_content_data_pointer = *packet_content_data;
 
 	// Serialize
@@ -83,6 +91,10 @@ void serialize_packet(packet_t *packet, uint8_t **packet_data,
 	*packet_size = sizeof(packet->packet_type) +
 				   sizeof(packet->transmission_id) + packet_content_size;
 	*packet_data = malloc(*packet_size);
+	if (packet_data == NULL) {
+		fprintf(stderr, "Malloc failed!\n");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
 	uint8_t *packet_data_pointer = *packet_data;
 
 	// Serialize packet

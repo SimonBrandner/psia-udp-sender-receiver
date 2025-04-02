@@ -27,6 +27,10 @@ void transmit_file(connection_t connection, char *file_path) {
 	uint32_t index = 0;
 	FILE *file = fopen(file_path, "rb");
 	uint8_t *data = malloc(sizeof(uint8_t) * MAX_DATA_SIZE);
+	if (data == NULL) {
+		fprintf(stderr, "Malloc failed!\n");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
 	while (!feof(file)) {
 		size_t data_size = fread(data, 1, MAX_DATA_SIZE, file);
 		send_transmission_data_packet(connection, transmission_id, index, data,
