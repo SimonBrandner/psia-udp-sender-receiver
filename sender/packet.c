@@ -5,9 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include "./packet.h"
-#include "utils.h"
+#include "./utils.h"
 
 void serialize_transmission_start_packet_content(
 	transmission_start_packet_content_t *packet_content,
@@ -82,7 +83,8 @@ void serialize_packet(packet_t *packet, uint8_t **packet_data,
 
 	// Allocate space
 	*packet_size = sizeof(packet->packet_type) +
-				   sizeof(packet->transmission_id) + packet_content_size;
+				   sizeof(packet->transmission_id) + packet_content_size +
+				   CRC_SIZE;
 	*packet_data = malloc(*packet_size);
 	if (packet_data == NULL) {
 		fprintf(stderr, "Malloc failed!\n");
@@ -101,6 +103,12 @@ void serialize_packet(packet_t *packet, uint8_t **packet_data,
 	packet_data_pointer += sizeof(transmission_id_net);
 
 	memcpy(packet_data_pointer, packet_content_data, packet_content_size);
+	packet_data_pointer += packet_content_size;
+
+	uint32_t crc = crc32(0L, Z_NULL, 0);
+	crc = crc32(crc, (const Bytef *)*packet_data, *packet_size - CRC_SIZE);
+	uint32_t crc_net = htonl(crc);
+	memcpy(packet_data_pointer, &crc_net, CRC_SIZE);
 
 	free(packet_content_data);
 }

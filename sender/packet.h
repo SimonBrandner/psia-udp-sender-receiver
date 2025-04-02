@@ -10,6 +10,7 @@
 
 #define TRANSMISSION_START_PACKET_TYPE 0
 #define TRANSMISSION_DATA_PACKET_TYPE 1
+#define CRC_SIZE 4
 
 typedef struct packet_t {
 	uint8_t packet_type;
