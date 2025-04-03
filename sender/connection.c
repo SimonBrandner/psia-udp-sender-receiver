@@ -8,8 +8,8 @@
 #include "netinet/in.h"
 
 #include "./connection.h"
+#include "./packet.h"
 #include "./utils.h"
-#include "packet.h"
 
 int create_socket() {
 	int socket_file_descriptor;
