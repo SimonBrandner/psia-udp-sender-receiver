@@ -60,6 +60,30 @@ void serialize_transmission_data_packet_content(
 		   packet_content->data_size);
 }
 
+void serialize_transmission_end_packet_content(
+	transmission_end_packet_content_t *packet_content,
+	uint8_t **packet_content_data, size_t *packet_content_size) {
+	// Calculate packet size
+	*packet_content_size =
+		sizeof(packet_content->file_size) + sizeof(packet_content->hash);
+
+	// Allocate space
+	*packet_content_data = malloc(*packet_content_size);
+	if (*packet_content_data == NULL) {
+		fprintf(stderr, "Malloc failed!\n");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
+	uint8_t *packet_content_data_pointer = *packet_content_data;
+
+	// Serialize
+	uint32_t file_size_net = htonl(packet_content->file_size);
+	memcpy(packet_content_data_pointer, &file_size_net, sizeof(file_size_net));
+	packet_content_data_pointer += sizeof(file_size_net);
+
+	memcpy(packet_content_data_pointer, packet_content->hash,
+		   sizeof(packet_content->hash));
+}
+
 void serialize_packet(packet_t *packet, uint8_t **packet_data,
 					  size_t *packet_size) {
 	// Serialize content
@@ -74,6 +98,11 @@ void serialize_packet(packet_t *packet, uint8_t **packet_data,
 	case TRANSMISSION_DATA_PACKET_TYPE:
 		serialize_transmission_data_packet_content(
 			(transmission_data_packet_content_t *)packet->content,
+			&packet_content_data, &packet_content_size);
+		break;
+	case TRANSMISSION_END_PACKET_TYPE:
+		serialize_transmission_end_packet_content(
+			(transmission_end_packet_content_t *)packet->content,
 			&packet_content_data, &packet_content_size);
 		break;
 	default:

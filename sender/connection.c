@@ -2,12 +2,14 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "netinet/in.h"
 
 #include "./connection.h"
 #include "./utils.h"
+#include "packet.h"
 
 int create_socket() {
 	int socket_file_descriptor;
@@ -81,6 +83,21 @@ void send_transmission_data_packet(connection_t connection,
 
 	packet_t packet;
 	packet.packet_type = TRANSMISSION_DATA_PACKET_TYPE;
+	packet.transmission_id = transmission_id;
+	packet.content = &content;
+
+	send_packet(connection, &packet);
+}
+
+void send_transmission_end_packet(connection_t connection,
+								  uint32_t transmission_id, uint32_t file_size,
+								  uint8_t hash[HASH_SIZE]) {
+	transmission_end_packet_content_t content;
+	content.file_size = file_size;
+	memcpy(&content.hash, hash, HASH_SIZE);
+
+	packet_t packet;
+	packet.packet_type = TRANSMISSION_END_PACKET_TYPE;
 	packet.transmission_id = transmission_id;
 	packet.content = &content;
 
