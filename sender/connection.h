@@ -40,4 +40,8 @@ void send_transmission_data_packet(connection_t connection,
 								   uint32_t transmission_id, uint32_t index,
 								   uint8_t *data, size_t data_size);
 
+void send_transmission_end_packet(connection_t connection,
+								  uint32_t transmission_id, uint32_t file_size,
+								  uint8_t hash[HASH_SIZE]);
+
 #endif // CONNECTION_H
