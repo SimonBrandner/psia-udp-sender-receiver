@@ -9,7 +9,7 @@
 #define TRANSMISSION_DATA_PACKET_TYPE 0x01  // Packet type for data
 #define TRANSMISSION_END_PACKET_TYPE 0x02   // Packet type for transmission end
 #define TRANSMISSION_SHA_PACKET_TYPE 0x03   // Packet type for acknowledgment
-#define TRANSMISSION_ACK_PACKET_TYPE 0x04 // Packet type for error
+#define TRANSMISSION_ACK_PACKET_TYPE 0x04   // Packet type for error
 
 typedef struct {
     uint32_t transmission_id;    // Unique ID for the transmission
