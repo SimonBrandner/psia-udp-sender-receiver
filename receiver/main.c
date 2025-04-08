@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <windows.h>
-#include <stdbool.h>
 #include "receiver.h"
 
 int main(int argc, char *argv[]) {
@@ -20,9 +19,8 @@ int main(int argc, char *argv[]) {
     printf("Sender Port: %d\n\n", sender_port);
 
     // Loop until new transmission is successful
-    while (new_transmission(receiver_port, sender_ip_address, sender_port) == false) {
+    while (!new_transmission(receiver_port, sender_ip_address, sender_port)) {
         fprintf(stderr, "Failed to receive transmission. Retrying...\n");
-        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }

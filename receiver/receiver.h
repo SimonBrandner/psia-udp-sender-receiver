@@ -19,7 +19,7 @@
 #define CRC32_LEN 4
 
 // Function that handles the packet processing into transmission_t structure
-int handle_packet(SOCKET sockfd, SOCKET clientfd, const char *sender_ip_address, uint16_t sender_port, transmission_t **trans);
+int handle_packet(SOCKET sockfd, SOCKET clientfd, const char *sender_ip_address, uint16_t sender_port, transmission_t **trans, boolean *file_saved);
 
 // Function that handles the new transmission
 bool new_transmission();

@@ -11,7 +11,14 @@
 #include "receiver.h"
 #include "utils.h"
 
-int handle_packet(SOCKET sockfd, SOCKET clientfd, const char *sender_ip_address, uint16_t sender_port, transmission_t **trans) {
+DWORD WINAPI spawn(LPVOID lpParam) {
+    printf("Exiting program after 10 seconds.\n");
+    Sleep(10000);
+    ExitProcess(0);
+    return 0;
+}
+
+int handle_packet(SOCKET sockfd, SOCKET clientfd, const char *sender_ip_address, uint16_t sender_port, transmission_t **trans, boolean *file_saved) {
     struct sockaddr_in client_addr;
     int addr_len = sizeof(client_addr);
     uint8_t buffer[BUFFER_SIZE];
@@ -45,7 +52,7 @@ int handle_packet(SOCKET sockfd, SOCKET clientfd, const char *sender_ip_address,
         result = process_packet_data_0x01(buffer, trans, recv_len, &packet_index);
 
     } else if (packet_type == TRANSMISSION_END_PACKET_TYPE) {
-        result = process_packet_end_0x02(buffer, trans);
+        result = process_packet_end_0x02(buffer, trans, file_saved);
     }
 
     if (result == CONTINUE_TRANSMISSION) {
@@ -104,16 +111,19 @@ bool new_transmission(unsigned int receiver_port, char *sender_ip_address, unsig
 
     printf("Listening on port %d...\n", receiver_port);
 
+    boolean file_saved = false;
+
     int result;
     transmission_t *trans = NULL;
     while (true) { // loop until transmission is complete
-        result = handle_packet(sockfd, clientfd, sender_ip_address, sender_port, &trans);
+        result = handle_packet(sockfd, clientfd, sender_ip_address, sender_port, &trans, &file_saved);
         if (result == SHA256_MISSMATCH) {
             closesocket(sockfd);
             WSACleanup();
             return false;
-        } else if (result == STOP_TRANSMISSION) {
-            break;
+        } else if (result == STOP_TRANSMISSION && !file_saved) {
+            HANDLE thread = CreateThread(NULL, 0, spawn, NULL, 0, NULL);
+            continue; // break; if no need to wait asynchronously for 10 seconds
         } else if (result == CONTINUE_TRANSMISSION) {
             continue;
         }

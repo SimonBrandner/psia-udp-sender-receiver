@@ -130,7 +130,11 @@ int process_packet_data_0x01(uint8_t *buffer, transmission_t **trans, ssize_t re
     return CONTINUE_TRANSMISSION;
 }
 
-int process_packet_end_0x02(uint8_t *buffer, transmission_t **trans) {
+int process_packet_end_0x02(uint8_t *buffer, transmission_t **trans, boolean *file_saved) {
+    if (*file_saved) {
+        return STOP_TRANSMISSION_SUCCESS;
+    }
+
     if (!*trans) {
         fprintf(stderr, "Error: Received end packet before transmission start.\n");
         return CONTINUE_TRANSMISSION_NO_ACK;
@@ -183,6 +187,7 @@ int process_packet_end_0x02(uint8_t *buffer, transmission_t **trans) {
         free((*trans)->data_packets[i]);
     }
 
+    *file_saved = true;
     printf("File has been written successfully\n");
 
     fclose(file);

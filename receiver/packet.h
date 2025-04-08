@@ -32,6 +32,6 @@ int process_packet_start_0x00(uint8_t *buffer, transmission_t **trans);
 int process_packet_data_0x01(uint8_t *buffer, transmission_t **trans, ssize_t recv_len, uint32_t *packet_index_address);
 
 // Function to process the end packet (0x02) and finalize the transmission structure
-int process_packet_end_0x02(uint8_t *buffer, transmission_t **trans);
+int process_packet_end_0x02(uint8_t *buffer, transmission_t **trans, boolean *file_saved);
 
 #endif //PACKET_H
