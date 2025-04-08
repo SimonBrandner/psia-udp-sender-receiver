@@ -112,6 +112,7 @@ bool new_transmission(unsigned int receiver_port, char *sender_ip_address, unsig
     printf("Listening on port %d...\n", receiver_port);
 
     boolean file_saved = false;
+    boolean exiting = false;
 
     int result;
     transmission_t *trans = NULL;
@@ -121,8 +122,11 @@ bool new_transmission(unsigned int receiver_port, char *sender_ip_address, unsig
             closesocket(sockfd);
             WSACleanup();
             return false;
-        } else if (result == STOP_TRANSMISSION && !file_saved) {
-            HANDLE thread = CreateThread(NULL, 0, spawn, NULL, 0, NULL);
+        } else if (result == STOP_TRANSMISSION) {
+            if (!exiting) {
+                HANDLE thread = CreateThread(NULL, 0, spawn, NULL, 0, NULL);
+                exiting = true;
+            }
             continue; // break; if no need to wait asynchronously for 10 seconds
         } else if (result == CONTINUE_TRANSMISSION) {
             continue;
