@@ -182,7 +182,7 @@ void transmit_data(transmission_t transmission) {
 	free(data_buffer);
 }
 
-void end_transmission(transmission_t transmission) {
+bool end_transmission(transmission_t transmission) {
 	// Finalise hash
 	uint8_t hash[HASH_SIZE];
 	unsigned int hash_size = HASH_SIZE;
@@ -194,16 +194,29 @@ void end_transmission(transmission_t transmission) {
 	sent_packet_t packet = send_transmission_end_packet(
 		transmission.connection, transmission.transmission_id,
 		transmission.file_size, hash);
-
 	resend_until_success(transmission, TRANSMISSION_END_PACKET_TYPE, packet);
+
+	while (true) {
+		packet_t packet = receive_packet(transmission.connection);
+		if (packet.packet_type != TRANSMISSION_END_RESPONSE_PACKET_TYPE) {
+			continue;
+		}
+		transmission_end_response_packet_content_t *content = packet.content;
+		return content->status;
+	}
 }
 
 void transmit_file(connection_t connection, char *file_path) {
-	transmission_t transmission = create_transmission(connection, file_path);
+	while (true) {
+		transmission_t transmission =
+			create_transmission(connection, file_path);
 
-	start_transmission(transmission);
-	transmit_data(transmission);
-	end_transmission(transmission);
+		start_transmission(transmission);
+		transmit_data(transmission);
+		if (end_transmission(transmission)) {
+			break;
+		}
 
-	destroy_transmission(transmission);
+		destroy_transmission(transmission);
+	}
 }
