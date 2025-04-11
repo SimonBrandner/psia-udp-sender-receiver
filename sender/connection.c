@@ -12,6 +12,7 @@
 #include "./packet.h"
 #include "./utils.h"
 #include "sys/socket.h"
+#include "zlib.h"
 
 int create_socket() {
 	int socket_file_descriptor;
@@ -143,16 +144,29 @@ packet_t receive_packet(connection_t connection) {
 	}
 
 	socklen_t address_size = sizeof(connection.receiver_address);
-	int packet_buffer_length = recvfrom(
-		connection.receiver_socket_file_descriptor, (char *)packet_buffer,
-		MAX_PACKET_SIZE, 0, (struct sockaddr *)&connection.receiver_address,
-		&address_size);
-	if (packet_buffer_length < 0) {
-		fprintf(stderr, "Recvfrom failed!\n");
-		exit(NON_RECOVERABLE_ERROR_CODE);
+	while (true) {
+		int packet_buffer_length = recvfrom(
+			connection.receiver_socket_file_descriptor, (char *)packet_buffer,
+			MAX_PACKET_SIZE, 0, (struct sockaddr *)&connection.receiver_address,
+			&address_size);
+		if (packet_buffer_length < 0) {
+			fprintf(stderr, "Recvfrom failed!\n");
+			exit(NON_RECOVERABLE_ERROR_CODE);
+		}
+
+		uint32_t received_crc;
+		memcpy(&received_crc, packet_buffer + packet_buffer_length - CRC_SIZE,
+			   CRC_SIZE);
+
+		uint32_t calculated_crc = crc32(0L, Z_NULL, 0);
+		calculated_crc = crc32(calculated_crc, (const Bytef *)packet_buffer,
+							   packet_buffer_length - CRC_SIZE);
+		calculated_crc = htonl(calculated_crc);
+		if (received_crc == calculated_crc) {
+			packet_t packet = parse_packet(packet_buffer, packet_buffer_length);
+			return packet;
+		}
+
+		fprintf(stderr, "Received faulty packet - ignoring!\n");
 	}
-
-	packet_t packet = parse_packet(packet_buffer, packet_buffer_length);
-
-	return packet;
 }
