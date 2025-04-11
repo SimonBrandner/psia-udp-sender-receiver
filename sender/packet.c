@@ -178,7 +178,7 @@ parse_acknowledgement_packet_content(uint8_t *buffer, size_t buffer_size) {
 
 packet_t parse_packet(uint8_t *buffer, size_t buffer_size) {
 	// Ignore CRC
-	buffer_size -= 4;
+	buffer_size -= CRC_SIZE;
 
 	packet_t packet;
 	packet.packet_type = buffer[0];
