@@ -29,28 +29,30 @@ size_t count_unacknowledged_packets(transmission_t *transmission) {
 bool transmission_loop(transmission_t *transmission, uint8_t *data_buffer) {
 	if (count_unacknowledged_packets(transmission) >
 		MAX_UNACKNOWLEDGED_PACKETS) {
-		packet_t packet = receive_packet(transmission->connection);
-
-		switch (packet.packet_type) {
-		case ACKNOWLEDGEMENT_PACKET_TYPE:;
-			acknowledgement_packet_content_t *packet_content =
-				(acknowledgement_packet_content_t *)packet.content;
-			if (packet_content->packet_type != TRANSMISSION_DATA_PACKET_TYPE) {
+		packet_t packet;
+		if (receive_packet(transmission->connection, &packet)) {
+			switch (packet.packet_type) {
+			case ACKNOWLEDGEMENT_PACKET_TYPE:;
+				acknowledgement_packet_content_t *packet_content =
+					(acknowledgement_packet_content_t *)packet.content;
+				if (packet_content->packet_type !=
+					TRANSMISSION_DATA_PACKET_TYPE) {
+					fprintf(stderr, "Packet of unknown type!");
+					exit(NON_RECOVERABLE_ERROR_CODE);
+				}
+				if (packet_content->status) {
+					transmission->packets[packet_content->index]
+						.acknowledgement = POSITIVE;
+				} else {
+					transmission->packets[packet_content->index]
+						.acknowledgement = NEGATIVE;
+				}
+				break;
+			default:
 				fprintf(stderr, "Packet of unknown type!");
 				exit(NON_RECOVERABLE_ERROR_CODE);
 			}
-			if (packet_content->status) {
-				transmission->packets[packet_content->index].acknowledgement =
-					POSITIVE;
-			} else {
-				transmission->packets[packet_content->index].acknowledgement =
-					NEGATIVE;
-			}
-		default:
-			fprintf(stderr, "Packet of unknown type!");
-			exit(NON_RECOVERABLE_ERROR_CODE);
 		}
-
 		return false;
 	}
 	for (size_t i = 0; i < transmission->current_index; ++i) {
@@ -141,7 +143,10 @@ void resend_until_success(transmission_t transmission, uint8_t packet_type,
 	while (true) {
 		acknowledgement_packet_content_t *content;
 		while (true) {
-			packet_t received_packet = receive_packet(transmission.connection);
+			packet_t received_packet;
+			if (!receive_packet(transmission.connection, &received_packet)) {
+				continue;
+			}
 			if (received_packet.transmission_id !=
 					transmission.transmission_id ||
 				received_packet.packet_type != ACKNOWLEDGEMENT_PACKET_TYPE) {
@@ -196,12 +201,17 @@ bool end_transmission(transmission_t transmission) {
 		transmission.file_size, hash);
 	resend_until_success(transmission, TRANSMISSION_END_PACKET_TYPE, packet);
 
+	packet_t received_packet;
 	while (true) {
-		packet_t packet = receive_packet(transmission.connection);
-		if (packet.packet_type != TRANSMISSION_END_RESPONSE_PACKET_TYPE) {
+		if (!receive_packet(transmission.connection, &received_packet)) {
 			continue;
 		}
-		transmission_end_response_packet_content_t *content = packet.content;
+		if (received_packet.packet_type !=
+			TRANSMISSION_END_RESPONSE_PACKET_TYPE) {
+			continue;
+		}
+		transmission_end_response_packet_content_t *content =
+			received_packet.content;
 		return content->status;
 	}
 }

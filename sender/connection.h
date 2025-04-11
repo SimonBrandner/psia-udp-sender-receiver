@@ -52,6 +52,6 @@ sent_packet_t send_transmission_end_packet(connection_t connection,
 										   uint32_t file_size,
 										   uint8_t hash[HASH_SIZE]);
 
-packet_t receive_packet(connection_t connection);
+bool receive_packet(connection_t connection, packet_t *packet);
 
 #endif // CONNECTION_H

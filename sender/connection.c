@@ -1,9 +1,13 @@
 #include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include "netinet/in.h"
@@ -14,12 +18,27 @@
 #include "sys/socket.h"
 #include "zlib.h"
 
+void set_non_blocking(int sockfd) {
+	int flags = fcntl(sockfd, F_GETFL, 0);
+	if (flags == -1) {
+		fprintf(stderr, "Failed to get socket flags!");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
+
+	if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
+		fprintf(stderr, "Failed to set socket as non-blocking!");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
+}
+
 int create_socket() {
 	int socket_file_descriptor;
 	if ((socket_file_descriptor = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
 		fprintf(stderr, "Socket creation failed");
 		exit(NON_RECOVERABLE_ERROR_CODE);
 	}
+	set_non_blocking(socket_file_descriptor);
+
 	return socket_file_descriptor;
 }
 
@@ -136,7 +155,7 @@ sent_packet_t send_transmission_end_packet(connection_t connection,
 	return send_packet(connection, &packet);
 }
 
-packet_t receive_packet(connection_t connection) {
+bool receive_packet(connection_t connection, packet_t *packet) {
 	uint8_t *packet_buffer = malloc(sizeof(uint8_t) * MAX_PACKET_SIZE);
 	if (packet_buffer == NULL) {
 		printf("Malloc failed in receive_packet()\n");
@@ -144,29 +163,34 @@ packet_t receive_packet(connection_t connection) {
 	}
 
 	socklen_t address_size = sizeof(connection.receiver_address);
-	while (true) {
-		int packet_buffer_length = recvfrom(
-			connection.receiver_socket_file_descriptor, (char *)packet_buffer,
-			MAX_PACKET_SIZE, 0, (struct sockaddr *)&connection.receiver_address,
-			&address_size);
-		if (packet_buffer_length < 0) {
-			fprintf(stderr, "Recvfrom failed!\n");
-			exit(NON_RECOVERABLE_ERROR_CODE);
+	int packet_buffer_length = recvfrom(
+		connection.receiver_socket_file_descriptor, (char *)packet_buffer,
+		MAX_PACKET_SIZE, 0, (struct sockaddr *)&connection.receiver_address,
+		&address_size);
+	if (packet_buffer_length < 0) {
+		if (errno != EAGAIN && errno != EWOULDBLOCK) {
+			// No data received
+			return false;
 		}
 
-		uint32_t received_crc;
-		memcpy(&received_crc, packet_buffer + packet_buffer_length - CRC_SIZE,
-			   CRC_SIZE);
-
-		uint32_t calculated_crc = crc32(0L, Z_NULL, 0);
-		calculated_crc = crc32(calculated_crc, (const Bytef *)packet_buffer,
-							   packet_buffer_length - CRC_SIZE);
-		calculated_crc = htonl(calculated_crc);
-		if (received_crc == calculated_crc) {
-			packet_t packet = parse_packet(packet_buffer, packet_buffer_length);
-			return packet;
-		}
-
-		fprintf(stderr, "Received faulty packet - ignoring!\n");
+		fprintf(stderr, "Recvfrom failed!\n");
+		exit(NON_RECOVERABLE_ERROR_CODE);
 	}
+
+	uint32_t received_crc;
+	memcpy(&received_crc, packet_buffer + packet_buffer_length - CRC_SIZE,
+		   CRC_SIZE);
+
+	uint32_t calculated_crc = crc32(0L, Z_NULL, 0);
+	calculated_crc = crc32(calculated_crc, (const Bytef *)packet_buffer,
+						   packet_buffer_length - CRC_SIZE);
+	calculated_crc = htonl(calculated_crc);
+	if (received_crc != calculated_crc) {
+		fprintf(stderr, "Received faulty packet - ignoring!\n");
+		return false;
+	}
+
+	*packet = parse_packet(packet_buffer, packet_buffer_length);
+	// Data received and parsed
+	return true;
 }
