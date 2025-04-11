@@ -11,12 +11,12 @@
 #include <unistd.h>
 
 #include "netinet/in.h"
+#include "sys/socket.h"
+#include "zlib.h"
 
 #include "./connection.h"
 #include "./packet.h"
 #include "./utils.h"
-#include "sys/socket.h"
-#include "zlib.h"
 
 void set_non_blocking(int sockfd) {
 	int flags = fcntl(sockfd, F_GETFL, 0);
