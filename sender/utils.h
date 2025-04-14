@@ -8,5 +8,7 @@
 uint32_t get_random_number();
 const char *get_file_name(const char *filepath);
 uint32_t get_file_size(const char *file_path);
+void sleep_for_milliseconds(uint32_t);
+bool timeout_elapsed(struct timeval *start, int seconds);
 
 #endif // UTILS_H
