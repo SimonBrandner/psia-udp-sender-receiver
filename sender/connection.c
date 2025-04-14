@@ -168,7 +168,7 @@ bool receive_packet(connection_t connection, packet_t *packet) {
 		MAX_PACKET_SIZE, 0, (struct sockaddr *)&connection.receiver_address,
 		&address_size);
 	if (packet_buffer_length < 0) {
-		if (errno != EAGAIN && errno != EWOULDBLOCK) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
 			// No data received
 			return false;
 		}
