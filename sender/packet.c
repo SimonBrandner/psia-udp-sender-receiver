@@ -169,6 +169,7 @@ parse_acknowledgement_packet_content(uint8_t *buffer, size_t buffer_size) {
 	if (packet_content->packet_type == TRANSMISSION_DATA_PACKET_TYPE) {
 		memcpy(&packet_content->index, buffer + 2,
 			   sizeof(packet_content->index));
+		packet_content->index = ntohl(packet_content->index);
 	} else {
 		memset(&packet_content->index, 0, sizeof(packet_content->index));
 	}
@@ -183,6 +184,7 @@ packet_t parse_packet(uint8_t *buffer, size_t buffer_size) {
 	packet_t packet;
 	packet.packet_type = buffer[0];
 	memcpy(&packet.transmission_id, buffer + 1, sizeof(packet.transmission_id));
+	packet.transmission_id = ntohl(packet.transmission_id);
 
 	switch (packet.packet_type) {
 	case TRANSMISSION_END_RESPONSE_PACKET_TYPE:
@@ -193,9 +195,6 @@ packet_t parse_packet(uint8_t *buffer, size_t buffer_size) {
 		packet.content =
 			parse_acknowledgement_packet_content(buffer + 5, buffer_size - 5);
 		break;
-	default:
-		fprintf(stderr, "Packet of unknown type!");
-		exit(NON_RECOVERABLE_ERROR_CODE);
 	}
 
 	return packet;

@@ -15,10 +15,9 @@
 #include "./utils.h"
 
 typedef struct connection_t {
-	int sender_socket_file_descriptor;
-	struct sockaddr_in receiver_address;
-	int receiver_socket_file_descriptor;
 	struct sockaddr_in sender_address;
+	struct sockaddr_in receiver_address;
+	int socket;
 } connection_t;
 
 int create_socket();

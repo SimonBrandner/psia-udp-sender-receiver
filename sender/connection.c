@@ -12,6 +12,7 @@
 
 #include "netinet/in.h"
 #include "sys/socket.h"
+#include "sys/time.h"
 #include "zlib.h"
 
 #include "./connection.h"
@@ -56,9 +57,9 @@ struct sockaddr_in create_receiver_address(char *receiver_ip_address,
 struct sockaddr_in create_sender_address(unsigned int sender_port) {
 	struct sockaddr_in sender_address;
 
-	sender_address.sin_family = AF_INET;		  // IPv4
-	sender_address.sin_addr.s_addr = INADDR_ANY;  // Listen on all interfaces
-	sender_address.sin_port = htons(sender_port); // Port to listen on
+	sender_address.sin_family = AF_INET;
+	sender_address.sin_addr.s_addr = INADDR_ANY;
+	sender_address.sin_port = htons(sender_port);
 
 	return sender_address;
 }
@@ -68,24 +69,27 @@ connection_t create_connection(char *receiver_ip_address,
 							   unsigned int sender_port) {
 	connection_t connection;
 
-	connection.sender_socket_file_descriptor = create_socket();
+	connection.socket = create_socket();
+
 	connection.receiver_address =
 		create_receiver_address(receiver_ip_address, receiver_port);
-
-	connection.receiver_socket_file_descriptor = create_socket();
 	connection.sender_address = create_sender_address(sender_port);
+
+	if (bind(connection.socket, (struct sockaddr *)&connection.sender_address,
+			 sizeof(connection.sender_address)) < 0) {
+		fprintf(stderr, "Failed to bind address on which to send!\n");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
 
 	return connection;
 }
 
-void close_connection(connection_t connection) {
-	close(connection.sender_socket_file_descriptor);
-}
+void close_connection(connection_t connection) { close(connection.socket); }
 
 void send_packet_data(connection_t connection, uint8_t *packet_data,
 					  size_t packet_size) {
-	if (sendto(connection.sender_socket_file_descriptor, packet_data,
-			   packet_size, 0, (struct sockaddr *)&connection.receiver_address,
+	if (sendto(connection.socket, packet_data, packet_size, 0,
+			   (struct sockaddr *)&connection.receiver_address,
 			   sizeof(connection.receiver_address)) < 0) {
 		fprintf(stderr, "Failed to send packet!");
 		exit(NON_RECOVERABLE_ERROR_CODE);
@@ -99,7 +103,11 @@ sent_packet_t send_packet(connection_t connection, packet_t *packet) {
 
 	send_packet_data(connection, packet_data, packet_size);
 
+	struct timeval now;
+	gettimeofday(&now, NULL);
+
 	sent_packet_t sent_packet;
+	sent_packet.time_stamp = now.tv_usec + now.tv_sec * 1000000;
 	sent_packet.acknowledgement = NONE;
 	sent_packet.packet_data = packet_data;
 	sent_packet.packet_data_size = packet_size;
@@ -164,9 +172,8 @@ bool receive_packet(connection_t connection, packet_t *packet) {
 
 	socklen_t address_size = sizeof(connection.receiver_address);
 	int packet_buffer_length = recvfrom(
-		connection.receiver_socket_file_descriptor, (char *)packet_buffer,
-		MAX_PACKET_SIZE, 0, (struct sockaddr *)&connection.receiver_address,
-		&address_size);
+		connection.socket, (char *)packet_buffer, MAX_PACKET_SIZE, 0,
+		(struct sockaddr *)&connection.receiver_address, &address_size);
 	if (packet_buffer_length < 0) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
 			// No data received
@@ -190,7 +197,13 @@ bool receive_packet(connection_t connection, packet_t *packet) {
 		return false;
 	}
 
+	if (packet_buffer[0] != ACKNOWLEDGEMENT_PACKET_TYPE &&
+		packet_buffer[0] != TRANSMISSION_END_RESPONSE_PACKET_TYPE) {
+		return false;
+	}
+
 	*packet = parse_packet(packet_buffer, packet_buffer_length);
+	free(packet_buffer);
 	// Data received and parsed
 	return true;
 }

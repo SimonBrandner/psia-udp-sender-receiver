@@ -23,6 +23,7 @@ typedef enum { NONE, POSITIVE, NEGATIVE } Acknowledgement;
 typedef struct {
 	uint8_t *packet_data;
 	size_t packet_data_size;
+	uint64_t time_stamp;
 	Acknowledgement acknowledgement;
 } sent_packet_t;
 

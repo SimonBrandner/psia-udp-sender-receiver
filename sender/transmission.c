@@ -36,21 +36,17 @@ bool receive_acknowledgement_packet(transmission_t *transmission) {
 			acknowledgement_packet_content_t *packet_content =
 				(acknowledgement_packet_content_t *)packet.content;
 			if (packet_content->packet_type != TRANSMISSION_DATA_PACKET_TYPE) {
-				fprintf(stderr, "Packet of unknown type!");
-				exit(NON_RECOVERABLE_ERROR_CODE);
+				return false;
 			}
 			if (packet_content->status) {
 				transmission->packets[packet_content->index].acknowledgement =
 					POSITIVE;
-			} else {
+			} else if (packet_content->index < transmission->current_index) {
 				transmission->packets[packet_content->index].acknowledgement =
 					NEGATIVE;
 			}
 			return true;
 			break;
-		default:
-			fprintf(stderr, "Packet of unknown type!");
-			exit(NON_RECOVERABLE_ERROR_CODE);
 		}
 	}
 
@@ -58,34 +54,43 @@ bool receive_acknowledgement_packet(transmission_t *transmission) {
 }
 
 bool transmission_loop(transmission_t *transmission, uint8_t *data_buffer) {
-	if (count_unacknowledged_packets(transmission) >
-			MAX_UNACKNOWLEDGED_PACKETS ||
-		feof(transmission->file)) {
-		printf("Waiting for data acknowledgement packets.\n");
+	size_t unacknowledged_packets_count =
+		count_unacknowledged_packets(transmission);
+	bool end_of_file = feof(transmission->file);
+
+	if (end_of_file && unacknowledged_packets_count == 0) {
+		printf("All data successfully received by the receiver.\n");
+		return true;
+	}
+
+	struct timeval now_struct;
+	gettimeofday(&now_struct, NULL);
+	uint64_t now = now_struct.tv_sec * 1000000 + now_struct.tv_usec;
+
+	for (size_t i = 0; i < transmission->current_index; ++i) {
+		sent_packet_t *sent_packet = &transmission->packets[i];
+		if (sent_packet->acknowledgement == NEGATIVE ||
+			(sent_packet->acknowledgement == NONE &&
+			 now - sent_packet->time_stamp > 100000)) {
+			// Resend packet
+			send_packet_data(transmission->connection, sent_packet->packet_data,
+							 sent_packet->packet_data_size);
+			sent_packet->time_stamp = now;
+		}
+	}
+	if (unacknowledged_packets_count > MAX_UNACKNOWLEDGED_PACKETS ||
+		end_of_file) {
 		if (!receive_acknowledgement_packet(transmission)) {
-			sleep_for_milliseconds(10);
+			sleep_for_milliseconds(WAIT_TIME);
 		}
 		return false;
-	}
-	for (size_t i = 0; i < transmission->current_index; ++i) {
-		if (transmission->packets[i].acknowledgement == NEGATIVE) {
-			// Resend packet
-			send_packet_data(transmission->connection,
-							 transmission->packets[i].packet_data,
-							 transmission->packets[i].packet_data_size);
-		}
 	}
 	// Send new packet
 	size_t data_size;
 	if ((data_size =
 			 fread(data_buffer, 1, MAX_DATA_SIZE, transmission->file)) <= 0) {
 		printf("All of the data transmitted.\n");
-		if (count_unacknowledged_packets(transmission) > 0) {
-			return false;
-		}
-
-		printf("All data successfully received.\n");
-		return true;
+		return false;
 	}
 
 	transmission->packets[transmission->current_index] =
@@ -129,7 +134,8 @@ transmission_t create_transmission(connection_t connection, char *file_path) {
 	transmission.length = transmission.file_size / MAX_DATA_SIZE + 1;
 	transmission.connection = connection;
 	transmission.md_context = md_context;
-	transmission.transmission_id = get_random_number();
+	// transmission.transmission_id = get_random_number();
+	transmission.transmission_id = 42;
 	transmission.packets = malloc(sizeof(sent_packet_t) * transmission.length);
 	if (transmission.packets == NULL) {
 		fprintf(stderr, "Failed to allocate space for packets!\n");
@@ -151,17 +157,22 @@ void destroy_transmission(transmission_t *transmission) {
 }
 
 bool resend_until_success_or_timeout(transmission_t *transmission,
-									 uint8_t packet_type,
-									 sent_packet_t packet) {
-
-	struct timeval start;
-	gettimeofday(&start, NULL);
+									 uint8_t packet_type, sent_packet_t packet,
+									 packet_t *haha, bool *hihi) {
+	struct timeval outter_start;
+	gettimeofday(&outter_start, NULL);
+	struct timeval inner_start;
 	while (true) {
-		acknowledgement_packet_content_t *content;
+		gettimeofday(&inner_start, NULL);
+		acknowledgement_packet_content_t *content = NULL;
 		printf(
 			"Waiting for acknowledgement of start/end transmission packet.\n");
 		while (true) {
-			if (timeout_elapsed(&start, TIMEOUT_SECONDS)) {
+			if (timeout_elapsed(&inner_start, 1)) {
+				printf("Have not received an acknowledgement - resending.\n");
+				break;
+			}
+			if (timeout_elapsed(&outter_start, TIMEOUT_SECONDS)) {
 				printf(
 					"Waiting for start/end transmission packet timed-out.\n");
 				return false;
@@ -169,28 +180,49 @@ bool resend_until_success_or_timeout(transmission_t *transmission,
 
 			packet_t received_packet;
 			if (!receive_packet(transmission->connection, &received_packet)) {
-				sleep_for_milliseconds(10);
+				sleep_for_milliseconds(WAIT_TIME);
 				continue;
+			}
+			if (transmission->transmission_id ==
+					received_packet.transmission_id &&
+				received_packet.packet_type ==
+					TRANSMISSION_END_RESPONSE_PACKET_TYPE) {
+				*haha = received_packet;
+				*hihi = true;
+				printf("Received end of transmission before ack.\n");
+				return true;
 			}
 			if (received_packet.transmission_id !=
 					transmission->transmission_id ||
 				received_packet.packet_type != ACKNOWLEDGEMENT_PACKET_TYPE) {
-				sleep_for_milliseconds(10);
+				printf("Transmission ID or packet type mismatch!\n");
+				printf("Packet type: %x\n", received_packet.packet_type);
+				printf("Transmission id: %x != %x\n",
+					   received_packet.transmission_id,
+					   transmission->transmission_id);
+				sleep_for_milliseconds(WAIT_TIME);
 				continue;
 			}
 			content = received_packet.content;
 			if (content->packet_type != packet_type) {
-				sleep_for_milliseconds(10);
+				sleep_for_milliseconds(WAIT_TIME);
 				continue;
 			}
 
 			break;
 		}
-		if (content->status) {
-			break;
+
+		if (content) {
+			if (content->status) {
+				break;
+			} else {
+				printf("Received negative acknowledgement of start/end "
+					   "transmission "
+					   "packet.\n");
+			}
+			content = NULL;
 		}
-		printf("Received negative acknowledgement of start/end transmission "
-			   "packet.\n");
+
 		send_packet_data(transmission->connection, packet.packet_data,
 						 packet.packet_data_size);
 	}
@@ -203,10 +235,11 @@ bool start_transmission(transmission_t *transmission) {
 		transmission->length, transmission->file_name);
 	printf("Sent transmission start packet.\n");
 	return resend_until_success_or_timeout(
-		transmission, TRANSMISSION_START_PACKET_TYPE, packet);
+		transmission, TRANSMISSION_START_PACKET_TYPE, packet, NULL, NULL);
 }
 
 bool transmit_data(transmission_t *transmission) {
+	printf("Starting to transmit data.\n");
 	uint8_t *data_buffer = malloc(sizeof(uint8_t) * MAX_DATA_SIZE);
 	if (data_buffer == NULL) {
 		fprintf(stderr, "Malloc failed!\n");
@@ -247,12 +280,24 @@ bool end_transmission(transmission_t *transmission) {
 	sent_packet_t packet = send_transmission_end_packet(
 		transmission->connection, transmission->transmission_id,
 		transmission->file_size, hash);
-	resend_until_success_or_timeout(transmission, TRANSMISSION_END_PACKET_TYPE,
-									packet);
+
+	packet_t received_packet;
+	bool hihi = false;
+	if (!resend_until_success_or_timeout(transmission,
+										 TRANSMISSION_END_PACKET_TYPE, packet,
+										 &received_packet, &hihi)) {
+		return false;
+	}
+	if (hihi) {
+		transmission_end_response_packet_content_t *content =
+			received_packet.content;
+		return content->status;
+	}
+
+	printf("Received acknowledgement of end of transmission packet.\n");
 
 	struct timeval start;
 	gettimeofday(&start, NULL);
-	packet_t received_packet;
 	while (true) {
 		if (timeout_elapsed(&start, TIMEOUT_SECONDS)) {
 			printf(
@@ -262,12 +307,12 @@ bool end_transmission(transmission_t *transmission) {
 		}
 
 		if (!receive_packet(transmission->connection, &received_packet)) {
-			sleep_for_milliseconds(10);
+			sleep_for_milliseconds(WAIT_TIME);
 			continue;
 		}
 		if (received_packet.packet_type !=
 			TRANSMISSION_END_RESPONSE_PACKET_TYPE) {
-			sleep_for_milliseconds(10);
+			sleep_for_milliseconds(WAIT_TIME);
 			continue;
 		}
 		transmission_end_response_packet_content_t *content =
@@ -292,7 +337,9 @@ void transmit_file(connection_t connection, char *file_path) {
 			destroy_transmission(&transmission);
 			break;
 		}
-		transmit_data(&transmission);
+		if (!transmit_data(&transmission)) {
+			break;
+		}
 		if (end_transmission(&transmission)) {
 			destroy_transmission(&transmission);
 			break;
