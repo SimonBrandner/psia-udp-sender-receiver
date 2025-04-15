@@ -15,7 +15,7 @@ void calculate_sha256_from_packets(transmission_t *trans, unsigned char *output_
         return;
     }
 
-    // Initialize OpenSSL
+    // Initialize OpenSSL`
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
     if (mdctx == NULL) {
         fprintf(stderr, "Failed to create EVP_MD_CTX\n");
@@ -95,6 +95,7 @@ int process_packet_data_0x01(uint8_t *buffer, transmission_t **trans, ssize_t re
     memcpy(&packet_index, &buffer[5], sizeof(uint32_t));
 
     transmission_id = ntohl(transmission_id);
+	transmission_id = 42;
     packet_index = ntohl(packet_index);
     *packet_index_address = packet_index;
 
