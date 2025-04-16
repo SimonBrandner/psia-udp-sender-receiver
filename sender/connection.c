@@ -193,7 +193,6 @@ bool receive_packet(connection_t connection, packet_t *packet) {
 						   packet_buffer_length - CRC_SIZE);
 	calculated_crc = htonl(calculated_crc);
 	if (received_crc != calculated_crc) {
-		fprintf(stderr, "Received faulty packet - ignoring!\n");
 		return false;
 	}
 
