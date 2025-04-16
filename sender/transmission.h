@@ -6,6 +6,9 @@
 
 #define MAX_DATA_SIZE 1000 // 1 kB
 #define MAX_UNACKNOWLEDGED_PACKETS 10
+#define TIMEOUT_SECONDS 10	  // 10s
+#define RESEND_TIMEOUT 100000 // 0.1s
+#define WAIT_TIME 10		  // 10ms
 
 typedef struct {
 	sent_packet_t *packets;
