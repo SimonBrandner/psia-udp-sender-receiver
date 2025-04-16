@@ -69,9 +69,8 @@ bool transmission_loop(transmission_t *transmission, uint8_t *data_buffer) {
 
 	for (size_t i = 0; i < transmission->current_index; ++i) {
 		sent_packet_t *sent_packet = &transmission->packets[i];
-		if (sent_packet->acknowledgement == NEGATIVE ||
-			(sent_packet->acknowledgement == NONE &&
-			 now - sent_packet->time_stamp > 100000)) {
+		if (sent_packet->acknowledgement != POSITIVE &&
+			now - sent_packet->time_stamp > RESEND_TIMEOUT) {
 			// Resend packet
 			send_packet_data(transmission->connection, sent_packet->packet_data,
 							 sent_packet->packet_data_size);
