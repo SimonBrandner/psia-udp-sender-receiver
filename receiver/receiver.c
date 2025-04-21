@@ -10,6 +10,7 @@
 #include "sender.h"
 #include "receiver.h"
 #include "utils.h"
+#include "logger.h"
 
 DWORD WINAPI spawn(LPVOID lpParam) {
     printf("Exiting program after 10 seconds.\n");
@@ -36,7 +37,10 @@ int handle_packet(SOCKET sockfd, SOCKET clientfd, const char *sender_ip_address,
     received_crc = ntohl(received_crc);
 
 
-	uint32_t transmission_id = 42;
+	uint32_t transmission_id = 0;
+    if (trans && *trans) {
+       transmission_id = (*trans)->transmission_id;
+    }
 
     // validate the CRC-32 checksum
     if (!check_packet_crc32(buffer, recv_len, sender_ip_address, sender_port, clientfd, packet_type, received_crc, transmission_id)) {

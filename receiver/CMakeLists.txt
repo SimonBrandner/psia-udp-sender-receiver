@@ -13,6 +13,7 @@ add_executable(psia_reciever_udp
         sender.h
         utils.c
         utils.h
+        logger.h
 )
 
 # Link Winsock2 and OpenSSL (for SHA-256)

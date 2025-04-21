@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <windows.h>
 #include "receiver.h"
+#include "logger.h"
 
 int main(int argc, char *argv[]) {
     if (argc != 4) {
