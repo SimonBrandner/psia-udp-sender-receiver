@@ -3,6 +3,7 @@
 #include "sender.h"
 #include "utils.h"
 #include "receiver.h"
+#include "logger.h"
 
 void send_sha256_acknowledgement(SOCKET sockfd, const char *server_ip,
 uint16_t server_port, uint8_t status, uint32_t transmission_id) {

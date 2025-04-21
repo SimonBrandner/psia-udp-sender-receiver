@@ -8,6 +8,7 @@
 #include "packet.h"
 #include "receiver.h"
 #include "sender.h"
+#include "logger.h"
 
 // Function to calculate CRC-32 using polynomial 0xEDB88320
 uint32_t calculate_crc32(const uint8_t *data, size_t length) {
