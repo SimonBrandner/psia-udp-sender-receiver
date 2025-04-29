@@ -141,3 +141,61 @@ void serialize_packet(packet_t *packet, uint8_t **packet_data,
 
 	free(packet_content_data);
 }
+
+transmission_end_response_packet_content_t *
+parse_transmission_end_packet_response_content(uint8_t *buffer,
+											   size_t buffer_size) {
+	transmission_end_response_packet_content_t *packet_content =
+		malloc(sizeof(transmission_end_response_packet_content_t));
+	if (packet_content == NULL) {
+		fprintf(stderr, "Failed to allocate space for packet content!");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
+	packet_content->status = buffer[0];
+	return packet_content;
+}
+
+acknowledgement_packet_content_t *
+parse_acknowledgement_packet_content(uint8_t *buffer, size_t buffer_size) {
+	acknowledgement_packet_content_t *packet_content =
+		malloc(sizeof(acknowledgement_packet_content_t));
+	if (packet_content == NULL) {
+		fprintf(stderr, "Failed to allocate space for packet content!");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
+
+	packet_content->packet_type = buffer[0];
+	packet_content->status = buffer[1];
+	if (packet_content->packet_type == TRANSMISSION_DATA_PACKET_TYPE) {
+		memcpy(&packet_content->index, buffer + 2,
+			   sizeof(packet_content->index));
+		packet_content->index = ntohl(packet_content->index);
+	} else {
+		memset(&packet_content->index, 0, sizeof(packet_content->index));
+	}
+
+	return packet_content;
+}
+
+packet_t parse_packet(uint8_t *buffer, size_t buffer_size) {
+	// Ignore CRC
+	buffer_size -= CRC_SIZE;
+
+	packet_t packet;
+	packet.packet_type = buffer[0];
+	memcpy(&packet.transmission_id, buffer + 1, sizeof(packet.transmission_id));
+	packet.transmission_id = ntohl(packet.transmission_id);
+
+	switch (packet.packet_type) {
+	case TRANSMISSION_END_RESPONSE_PACKET_TYPE:
+		packet.content = parse_transmission_end_packet_response_content(
+			buffer + 5, buffer_size - 5);
+		break;
+	case ACKNOWLEDGEMENT_PACKET_TYPE:
+		packet.content =
+			parse_acknowledgement_packet_content(buffer + 5, buffer_size - 5);
+		break;
+	}
+
+	return packet;
+}

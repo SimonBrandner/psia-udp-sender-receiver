@@ -1,15 +1,36 @@
 #include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include "netinet/in.h"
+#include "sys/socket.h"
+#include "sys/time.h"
+#include "zlib.h"
 
 #include "./connection.h"
 #include "./packet.h"
 #include "./utils.h"
+
+void set_non_blocking(int sockfd) {
+	int flags = fcntl(sockfd, F_GETFL, 0);
+	if (flags == -1) {
+		fprintf(stderr, "Failed to get socket flags!");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
+
+	if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
+		fprintf(stderr, "Failed to set socket as non-blocking!");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
+}
 
 int create_socket() {
 	int socket_file_descriptor;
@@ -17,50 +38,86 @@ int create_socket() {
 		fprintf(stderr, "Socket creation failed");
 		exit(NON_RECOVERABLE_ERROR_CODE);
 	}
+	set_non_blocking(socket_file_descriptor);
+
 	return socket_file_descriptor;
 }
 
-struct sockaddr_in create_receiver_address(char *target_ip_address,
-										   unsigned int target_port) {
+struct sockaddr_in create_receiver_address(char *receiver_ip_address,
+										   unsigned int receiver_port) {
 	struct sockaddr_in receiver_address;
+
 	receiver_address.sin_family = AF_INET;
-	receiver_address.sin_port = htons(target_port);
-	inet_pton(AF_INET, target_ip_address, &receiver_address.sin_addr);
+	receiver_address.sin_port = htons(receiver_port);
+	inet_pton(AF_INET, receiver_ip_address, &receiver_address.sin_addr);
 
 	return receiver_address;
 }
 
-connection_t create_connection(char *target_ip_address,
-							   unsigned int target_port) {
+struct sockaddr_in create_sender_address(unsigned int sender_port) {
+	struct sockaddr_in sender_address;
+
+	sender_address.sin_family = AF_INET;
+	sender_address.sin_addr.s_addr = INADDR_ANY;
+	sender_address.sin_port = htons(sender_port);
+
+	return sender_address;
+}
+
+connection_t create_connection(char *receiver_ip_address,
+							   unsigned int receiver_port,
+							   unsigned int sender_port) {
 	connection_t connection;
-	connection.socket_file_descriptor = create_socket();
+
+	connection.socket = create_socket();
+
 	connection.receiver_address =
-		create_receiver_address(target_ip_address, target_port);
+		create_receiver_address(receiver_ip_address, receiver_port);
+	connection.sender_address = create_sender_address(sender_port);
+
+	if (bind(connection.socket, (struct sockaddr *)&connection.sender_address,
+			 sizeof(connection.sender_address)) < 0) {
+		fprintf(stderr, "Failed to bind address on which to send!\n");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
+
 	return connection;
 }
 
-void close_connection(connection_t connection) {
-	close(connection.socket_file_descriptor);
-}
+void close_connection(connection_t connection) { close(connection.socket); }
 
-void send_packet(connection_t connection, packet_t *packet) {
-	uint8_t *packet_data = NULL;
-	size_t packet_size;
-	serialize_packet(packet, &packet_data, &packet_size);
-
-	if (sendto(connection.socket_file_descriptor, packet_data, packet_size, 0,
+void send_packet_data(connection_t connection, uint8_t *packet_data,
+					  size_t packet_size) {
+	if (sendto(connection.socket, packet_data, packet_size, 0,
 			   (struct sockaddr *)&connection.receiver_address,
 			   sizeof(connection.receiver_address)) < 0) {
 		fprintf(stderr, "Failed to send packet!");
 		exit(NON_RECOVERABLE_ERROR_CODE);
 	}
-	free(packet_data);
 }
 
-void send_transmission_start_packet(connection_t connection,
-									uint32_t transmission_id,
-									uint32_t transmission_length,
-									const char *file_name) {
+sent_packet_t send_packet(connection_t connection, packet_t *packet) {
+	uint8_t *packet_data = NULL;
+	size_t packet_size;
+	serialize_packet(packet, &packet_data, &packet_size);
+
+	send_packet_data(connection, packet_data, packet_size);
+
+	struct timeval now;
+	gettimeofday(&now, NULL);
+
+	sent_packet_t sent_packet;
+	sent_packet.time_stamp = now.tv_usec + now.tv_sec * 1000000;
+	sent_packet.acknowledgement = NONE;
+	sent_packet.packet_data = packet_data;
+	sent_packet.packet_data_size = packet_size;
+	return sent_packet;
+}
+
+sent_packet_t send_transmission_start_packet(connection_t connection,
+											 uint32_t transmission_id,
+											 uint32_t transmission_length,
+											 const char *file_name) {
 	transmission_start_packet_content_t content;
 	content.transmission_length = transmission_length;
 	content.file_name = file_name;
@@ -70,12 +127,13 @@ void send_transmission_start_packet(connection_t connection,
 	packet.transmission_id = transmission_id;
 	packet.content = &content;
 
-	send_packet(connection, &packet);
+	return send_packet(connection, &packet);
 }
 
-void send_transmission_data_packet(connection_t connection,
-								   uint32_t transmission_id, uint32_t index,
-								   uint8_t *data, size_t data_size) {
+sent_packet_t send_transmission_data_packet(connection_t connection,
+											uint32_t transmission_id,
+											uint32_t index, uint8_t *data,
+											size_t data_size) {
 	transmission_data_packet_content_t content;
 	content.index = index;
 	content.data = data;
@@ -86,12 +144,13 @@ void send_transmission_data_packet(connection_t connection,
 	packet.transmission_id = transmission_id;
 	packet.content = &content;
 
-	send_packet(connection, &packet);
+	return send_packet(connection, &packet);
 }
 
-void send_transmission_end_packet(connection_t connection,
-								  uint32_t transmission_id, uint32_t file_size,
-								  uint8_t hash[HASH_SIZE]) {
+sent_packet_t send_transmission_end_packet(connection_t connection,
+										   uint32_t transmission_id,
+										   uint32_t file_size,
+										   uint8_t hash[HASH_SIZE]) {
 	transmission_end_packet_content_t content;
 	content.file_size = file_size;
 	memcpy(&content.hash, hash, HASH_SIZE);
@@ -101,5 +160,49 @@ void send_transmission_end_packet(connection_t connection,
 	packet.transmission_id = transmission_id;
 	packet.content = &content;
 
-	send_packet(connection, &packet);
+	return send_packet(connection, &packet);
+}
+
+bool receive_packet(connection_t connection, packet_t *packet) {
+	uint8_t *packet_buffer = malloc(sizeof(uint8_t) * MAX_PACKET_SIZE);
+	if (packet_buffer == NULL) {
+		printf("Malloc failed in receive_packet()\n");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
+
+	socklen_t address_size = sizeof(connection.receiver_address);
+	int packet_buffer_length = recvfrom(
+		connection.socket, (char *)packet_buffer, MAX_PACKET_SIZE, 0,
+		(struct sockaddr *)&connection.receiver_address, &address_size);
+	if (packet_buffer_length < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			// No data received
+			return false;
+		}
+
+		fprintf(stderr, "Recvfrom failed!\n");
+		exit(NON_RECOVERABLE_ERROR_CODE);
+	}
+
+	uint32_t received_crc;
+	memcpy(&received_crc, packet_buffer + packet_buffer_length - CRC_SIZE,
+		   CRC_SIZE);
+
+	uint32_t calculated_crc = crc32(0L, Z_NULL, 0);
+	calculated_crc = crc32(calculated_crc, (const Bytef *)packet_buffer,
+						   packet_buffer_length - CRC_SIZE);
+	calculated_crc = htonl(calculated_crc);
+	if (received_crc != calculated_crc) {
+		return false;
+	}
+
+	if (packet_buffer[0] != ACKNOWLEDGEMENT_PACKET_TYPE &&
+		packet_buffer[0] != TRANSMISSION_END_RESPONSE_PACKET_TYPE) {
+		return false;
+	}
+
+	*packet = parse_packet(packet_buffer, packet_buffer_length);
+	free(packet_buffer);
+	// Data received and parsed
+	return true;
 }
